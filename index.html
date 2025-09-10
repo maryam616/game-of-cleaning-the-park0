@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title> Cleaning the park game  </title>
+<style>
+  body     {
+      margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+align-items: center;
+    font-family:'Times New Roman', Times, serif;
+color: white;
+   
+ 
+    background: linear-gradient(135deg, #44340c, rgb(41, 141, 24));
+     overflow: hidden;
+   
+    }
+  #game {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  h1 {
+     position: absolute;
+    top: 10px;
+   left: 50%;
+    transform: translateX(-50%);
+    font-size: 2em;
+  }
+  #bin {
+    position: absolute;
+      bottom: 20px;
+    right: 20px;
+    font-size: 3em;
+     transition: transform 0.2s;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.15);
+      
+    padding: 5px;
+  
+  
+  }
+  
+  
+  .bin-animate {
+    transform: scale(1.3);
+  }
+     
+  
+  .trash {
+      position: absolute;
+    cursor: grab;
+   
+    user-select: none;
+    transition: transform 0.2s;
+  }
+  
+  
+  .wiggle {
+    animation: wiggle 0.3s infinite;
+  }
+  @keyframes wiggle {
+    0% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+    100% { transform: rotate(-5deg); }
+  }
+  #level, #score, #timer, #recycled {
+    position: absolute;
+    left: 20px;
+    font-size: 1.2em;
+  }
+  #level { top: 50px; }
+  #score { top: 80px; }
+  #timer { top: 110px; }
+  #recycled { top: 140px; }
+  #message {
+  position: absolute;
+    top: 180px;
+  left: 50%;
+      transform: translateX(-50%);
+    font-size: 1.4em;
+    text-align: center;
+  }
+
+
+  #stopBtn, #resumeBtn { 
+    position: absolute;
+    bottom: 20px;
+       padding: 8px 16px;
+    font-size: 1em;
+      border: none;
+    border-radius: 6px;
+    cursor: pointer;
+     background-color: rgba(255,255,255,0.3);
+  color: white;
+    text-shadow: 1px 1px 2px rgb(107, 97, 97);
+    transition: background-color 0.2s;
+  }
+  #stopBtn:hover, #resumeBtn:hover { background-color: rgba(91, 79, 79, 0.5); }
+  #stopBtn { left: 20px; }
+  #resumeBtn { left: 140px; }
+  #paw {
+    position: absolute;
+    font-size: 3em;
+    display: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <h1>🪷🪷 Clean the park🪷🪷 </h1>
+  <div id="bin">🗑️</div>
+  <div id="level">your level: 1</div>
+  <div id="score">your score: 0</div>
+  <div id="timer">Time left: 30</div>
+  <div id="recycled">recycled: 0</div>
+  <div id="message">Click anywhere to start the game~~</div>
+  <button id="stopBtn">stop Game</button>
+  <button id="resumeBtn">resume Game</button>
+  <div id="paw">🐾</div>
+</div>
+
+<script>
+const game = document.getElementById("game");
+const bin = document.getElementById("bin");
+const levelEl = document.getElementById("level");
+const scoreEl = document.getElementById("score");
+const timerEl = document.getElementById("timer");
+const recycledEl = document.getElementById("recycled");
+const messageEl = document.getElementById("message");
+const stopBtn = document.getElementById("stopBtn");
+const resumeBtn = document.getElementById("resumeBtn");
+const paw = document.getElementById("paw");
+
+const trashTypes = ["🦋","🌻","🌹","🍎","🪻"];
+
+let state = {
+  level: 1,
+  score: 0,
+  recycled: 0,
+  trash: [],
+  running: false,
+  mouse: {x:0,y:0},
+  animationId: null,
+  timerId: null,
+  nextLevelTimeout: null,
+  timeLeft: 30,
+  musicStarted: false
+};
+
+//  Sounds 
+const Sounds = {
+  drop: new Audio("drop.mp3"),
+  level: new Audio("level.mp3"),
+  music: new Audio("bg-music.mp3")
+};
+Sounds.music.loop = true;
+
+function playSound(name){
+  if(Sounds[name]){
+    Sounds[name].cloneNode().play().catch(()=>{});
+  }
+}
+function playMusic(){
+  if(!state.musicStarted){
+    Sounds.music.play().catch(()=>{});
+    state.musicStarted = true;
+  }
+}
+
+
+
+function rand(min,max){ return Math.random()*(max-min)+min; }
+function distance(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
+
+// --- trash---
+function createTrash(num){
+  for(let i=0;i<num;i++){
+    const el = document.createElement("div");
+    el.className="trash";
+    el.textContent = trashTypes[Math.floor(Math.random()*trashTypes.length)];
+    const size = rand(24, 48);
+    el.style.fontSize = size+"px";
+    game.appendChild(el);
+
+    const t = {
+      el,
+      x: rand(50, window.innerWidth-100),
+      y: rand(150, window.innerHeight-100),
+      vx: rand(-0.6,0.6),
+      vy: rand(-0.6,0.6),
+      size
+    };
+    el.style.left = t.x+"px";
+    el.style.top = t.y+"px";
+
+    el.draggable = true;
+    el.addEventListener("dragstart",(e)=>{
+      e.dataTransfer.setData("text/plain",state.trash.indexOf(t));
+    });
+
+    if(Math.random()<0.3) el.classList.add("wiggle");
+
+    state.trash.push(t);
+  }
+}
+
+
+function moveTrash(){
+  if(!state.running) return;
+  state.trash.forEach(t=>{
+    t.x += t.vx;
+    t.y += t.vy;
+    if(t.x<0||t.x>window.innerWidth-40) t.vx*=-1;
+    
+    if(t.y<100||t.y>window.innerHeight-40) t.vy*=-1;
+    let d = distance(t.x,t.y,state.mouse.x,state.mouse.y);
+    
+    if(d<150){
+      let dx = t.x-state.mouse.x, dy = t.y-state.mouse.y;
+      t.vx += dx/d*0.05; t.vy += dy/d*0.05;
+    }
+    t.el.style.left = t.x+"px";
+    t.el.style.top = t.y+"px";
+  });
+  if(Math.random()<0.002) triggerChaos();
+  state.animationId = requestAnimationFrame(moveTrash);
+}
+
+
+function startTimer(){
+  clearInterval(state.timerId);
+  
+  state.timeLeft = Math.max(10  , 30 - (state.level-1)*2);
+  timerEl.textContent = `Time: ${state.timeLeft}`;
+  state.timerId 
+  = setInterval(()=>{
+    
+    
+    if(!state.running) return;
+    state.timeLeft--;
+    timerEl.textContent = `Time: ${state.timeLeft}`;
+    if(state.timeLeft<=0) stopGame(`⏳ Time is up! Level: ${state.level}, your score: ${state.score}`);
+  },1000);
+}
+
+
+function stopGame(msg){
+
+  state.running = false;
+  cancelAnimationFrame(state.animationId);
+  
+  clearInterval(state.timerId);
+  if(state.nextLevelTimeout) clearTimeout(state.nextLevelTimeout);
+  messageEl.textContent = msg || "Game stopped!";
+}
+function resumeGame(){
+  if(!state.running){
+    state.running = true;
+    messageEl.textContent="";
+    moveTrash(); startTimer();
+  }
+}
+
+// --- trash bin---
+bin.addEventListener("dragover", e=> e.preventDefault());
+bin.addEventListener("drop", e=>{
+
+  if(!state.running) return;
+  let idx = e.dataTransfer.getData("text/plain");
+  let t = state.trash[idx];
+  if(t) handleTrashDrop(t);
+});
+
+
+function handleTrashDrop(t){
+  playSound("drop");
+  bin.classList.add("bin-animate");
+  setTimeout(()=>bin.classList.remove("bin-animate"),200);
+  
+  t.el.remove();
+  state.trash.splice(state.trash.indexOf(t),1);
+  state.score += (t.size>36 ? 2:1);
+  state.recycled++;
+  scoreEl.textContent="Score: "+state.score;
+  recycledEl.textContent="Recycled: "+state.recycled;
+  
+  
+    if(state.trash.length===0){
+    state.level++;
+    playSound("level");
+    levelEl.textContent="Level: "+state.level;
+    messageEl.textContent="Level up! New trash is coming...";
+    state.nextLevelTimeout=setTimeout(()=>{
+      if(state.running){ createTrash(3+state.level); startTimer(); messageEl.textContent=""; }
+    },1500);
+  }
+}
+
+
+function triggerChaos(){
+  paw.style.left = rand(50, window.innerWidth-100)+"px";
+  paw.style.top = rand(100, window.innerHeight-100)+"px";
+  paw.style.display="block";
+  setTimeout(()=>paw.style.display="none",800);
+  state.trash.forEach(t=>{
+    t.x = rand(50, window.innerWidth-100);
+    t.y = rand(150, window.innerHeight-100);
+  });
+}
+
+
+game.addEventListener("click", ()=>{
+  if(!state.running && state.trash.length===0){
+    state.running = true;
+    playSound("start");
+    playMusic();
+
+    messageEl.textContent="";
+    createTrash(3);
+    moveTrash(); startTimer();
+  }
+});  
+   
+stopBtn.addEventListener("click",()=> stopGame());
+
+resumeBtn.addEventListener("click",()=> resumeGame());
+document.addEventListener("mousemove", e=>{ state.mouse.x=e.clientX; state.mouse.y=e.clientY; });
+
+
+  let draggingTrash=null;
+game.addEventListener("touchstart", e=>{
+           if(!state.running) return;
+  const tEl = e.target.closest(".trash");
+      if(tEl) draggingTrash=state.trash.find(t=>t.el===tEl);
+});
+
+
+game.addEventListener("touchmove", e=>{
+   
+     if(draggingTrash){
+    const t=e.touches[0];
+    draggingTrash.x=t.clientX-20; 
+    
+     draggingTrash.y=t.clientY-20;
+
+    draggingTrash.el.style.left=draggingTrash.x+"px";
+
+    draggingTrash.el.style.top=draggingTrash.y+"px";
+  }
+});
+   game.addEventListener("touchend", ()=>{
+    
+    
+    if(draggingTrash){
+    const b=bin.getBoundingClientRect(), r=draggingTrash.el.getBoundingClientRect();
+    
+       if(
+        r.left<b.right&&
+          r.right>b.left&&
+          r.top<b.bottom&&
+          r.bottom>b.top   ) 
+          
+          
+          
+          handleTrashDrop(draggingTrash);
+    
+    
+          draggingTrash=null;
+  }
+});
+</script>
+</body>
+</html>
